@@ -3,3 +3,8 @@ runs
 .idea
 yolov8n-obb.pt
 defect_model_data
+board.jpg
+path/
+pcba_env/
+results/
+test-processed-output.jpg
