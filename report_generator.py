@@ -148,6 +148,28 @@ def extract_defect_locations(patch_results):
     
     return defect_locations
 
+def create_defect_overlay_image(run_dir, defect_locations):
+    """Simple overlay of defect locations on the preprocessed image"""
+    import cv2
+    
+    # Find the preprocessed image
+    preprocessed_imgs = list(Path(run_dir).glob("*_preprocessed.jpg"))
+    if not preprocessed_imgs:
+        return None
+        
+    img = cv2.imread(str(preprocessed_imgs[0]))
+    
+    # Draw red boxes on defects
+    for defect in defect_locations:
+        coords = defect['location']['bounding_box']
+        cv2.rectangle(img, (coords[0], coords[1]), (coords[2], coords[3]), (0, 0, 255), 3)
+        cv2.putText(img, defect['defect_type'], (coords[0], coords[1]-10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+    
+    output_path = Path(run_dir) / "defects_overlay.jpg"
+    cv2.imwrite(str(output_path), img)
+    return str(output_path)
+
 def get_board_quadrant(x, y, image_bounds):
     """
     Determine which quadrant of the board the defect is in
@@ -370,7 +392,7 @@ def create_json_report(inference_results, defect_locations, summary_stats, recom
     
     return report
 
-def create_html_report(json_report):
+def create_html_report(json_report, run_dir=None):
     """
     Create HTML report for better visualization
     
@@ -380,6 +402,21 @@ def create_html_report(json_report):
     Returns:
         str: HTML report content
     """
+    # Find the actual image files
+    component_img = None
+    defect_img = None
+    
+    if run_dir:
+        run_path = Path(run_dir)
+        # Find component detection image
+        comp_imgs = list(run_path.glob("*_components_detected.jpg"))
+        if comp_imgs:
+            component_img = comp_imgs[0].name
+        
+        # Find defect overlay image  
+        if (run_path / "defects_overlay.jpg").exists():
+            defect_img = "defects_overlay.jpg"
+
     summary = json_report['summary']
     defects = json_report['defect_locations']
     recommendations = json_report['recommendations']
@@ -423,6 +460,28 @@ def create_html_report(json_report):
             <p>{summary['status_reason']}</p>
             <p>Generated: {json_report['report_metadata']['generation_timestamp']}</p>
         </div>
+
+        <div class="section">
+            <h2>Visual Results</h2>
+    """
+    
+    # Add the conditional image logic here
+    if component_img:
+        html_content += f'''
+            <h3>Component Detection</h3>
+            <img src="{component_img}" style="max-width: 60%; height: auto; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;">
+            <p style="text-align: center; color: #6c757d;">YOLO component detection with bounding boxes</p>
+        '''
+
+    if defect_img:
+        html_content += f'''
+            <h3>Defect Overlay</h3>
+            <img src="{defect_img}" style="max-width: 60%; height: auto; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;">
+            <p style="text-align: center; color: #6c757d;">Red boxes show detected defect locations</p>
+        '''
+
+    html_content += f"""
+        </div>
         
         <div class="section">
             <h2>Summary Statistics</h2>
@@ -445,24 +504,23 @@ def create_html_report(json_report):
                 </div>
             </div>
             
-            <h3>Severity Breakdown</h3>
+            <h3>Defects Found</h3>
             <table>
                 <tr>
-                    <th>Severity</th>
-                    <th>Count</th>
-                    <th>Percentage</th>
+                    <th>Defect Type</th>
+                    <th>Location (X, Y)</th>
+                    <th>Confidence</th>
                 </tr>
     """
     
-    for severity, count in summary['severity_breakdown'].items():
-        if count > 0:
-            percentage = (count / summary['total_defects'] * 100) if summary['total_defects'] > 0 else 0
-            html_content += f"""
-                <tr>
-                    <td>{severity}</td>
-                    <td>{count}</td>
-                    <td>{percentage:.1f}%</td>
-                </tr>
+    for defect in defects[:10]:  # Show first 10 defects
+        coords = defect['location']['center_coordinates']
+        html_content += f"""
+            <tr>
+                <td>{defect['defect_type'].title()}</td>
+                <td>({coords[0]}, {coords[1]})</td>
+                <td>{defect['confidence']:.1%}</td>
+            </tr>
             """
     
     html_content += """
@@ -551,6 +609,10 @@ def main():
         
         # Generate recommendations
         recommendations = generate_recommendations(defect_locations, summary_stats)
+
+        # CREATE DEFECT OVERLAY IMAGE (ADD THIS):
+        if args.run_dir and defect_locations:
+            create_defect_overlay_image(args.run_dir, defect_locations)
         
         # Create JSON report
         json_report = create_json_report(
@@ -566,7 +628,7 @@ def main():
         
         # Create HTML report if requested
         if args.html:
-            html_content = create_html_report(json_report)
+            html_content = create_html_report(json_report, args.run_dir)
             
             html_path = Path(args.html)
             html_path.parent.mkdir(parents=True, exist_ok=True)

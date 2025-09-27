@@ -253,8 +253,9 @@ def main():
                 print(f"  {class_name}: {count}")
         
         # Optional visualization
-        if args.visualize:
-            visualize_detections(image, results, args.visualize)
+        # Always create visualization for HTML report
+        viz_path = str(Path(args.output).parent / f"{Path(args.image).stem}_components_detected.jpg")
+        visualize_detections(image, results, viz_path)
         
         return 0
         
