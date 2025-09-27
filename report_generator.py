@@ -29,6 +29,27 @@ from pathlib import Path
 from datetime import datetime
 import math
 
+def get_total_components_from_yolo(inference_results):
+    """Get total component count from original YOLO detection results"""
+    try:
+        # The patches_directory should contain the components JSON file
+        patches_dir = Path(inference_results['metadata']['patches_directory'])
+        
+        # Look for components JSON file in the run directory (parent of patches)
+        run_dir = patches_dir.parent
+        component_files = list(run_dir.glob("*_components.json"))
+        
+        if component_files:
+            with open(component_files[0], 'r') as f:
+                component_data = json.load(f)
+            
+            if 'predictions_v2' in component_data:
+                return component_data['count_objects']
+            
+        return 0
+    except:
+        return 0
+    
 def load_inference_results(results_file):
     """
     Load defect inference results from JSON file
@@ -279,7 +300,7 @@ def generate_summary_statistics(inference_results, defect_locations):
         'defect_type_breakdown': defect_type_counts,
         'patches_analyzed': analysis['total_patches'],
         'defect_density': round(total_defects / analysis['total_patches'] * 100, 2),
-        'components_detected': len(analysis.get('component_types_detected', {})),
+        'components_detected': get_total_components_from_yolo(inference_results),
         'high_confidence_defects': analysis.get('high_confidence_defects', 0)
     }
     
