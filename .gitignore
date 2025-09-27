@@ -1,3 +1,6 @@
 PCBA-1
 runs
 .idea
+yolov8n-obb.pt
+defect_model_data
+

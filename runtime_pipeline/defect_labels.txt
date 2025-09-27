@@ -1,0 +1,5 @@
+label_names = ['has_capacitor', 'has_connector', 'has_diode', 'has_ic', 
+               'has_inductor', 'has_led', 'has_potentiometer', 'has_relay', 
+               'has_resistor', 'has_transistor', 'has_dirt', 'has_missing', 
+               'has_rotate', 'has_solder', 'has_any_component', 'has_any_defect', 
+               'is_background']
