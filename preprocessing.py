@@ -1,4 +1,30 @@
-import cv2, numpy as np, os
+"""
+preprocessing.py - PCBA Image Preprocessing with CLI support
+
+PURPOSE:
+Preprocesses PCBA images using the crop_pcba_to_jpg function for optimal component detection.
+Handles PCBA detection, perspective correction, and image enhancement.
+
+INPUTS:
+- Raw PCBA image (JPG/PNG)
+
+OUTPUTS:
+- Preprocessed image ready for YOLO detection
+
+DEPENDENCIES:
+- opencv-python
+- numpy
+
+USAGE:
+python3 preprocessing.py --input test.jpg --output test_preprocessed.jpg
+"""
+
+import cv2
+import numpy as np
+import os
+import argparse
+import sys
+from pathlib import Path
 
 def crop_pcba_to_jpg(
     image_path: str,
@@ -8,6 +34,19 @@ def crop_pcba_to_jpg(
     min_area_frac: float = 0.12,
     max_aspect_ratio: float = 4.0,
 ) -> str:
+    """
+    Detect and crop PCBA from image with perspective correction
+    
+    Args:
+        image_path: Input image path
+        output_path: Output image path
+        prefer: Detection method ('auto', 'color', 'geometry')
+        min_area_frac: Minimum area fraction of image for valid PCBA
+        max_aspect_ratio: Maximum aspect ratio for valid PCBA
+    
+    Returns:
+        str: Path to output image
+    """
 
     def resize_for_processing(img, max_dim=1600):
         h, w = img.shape[:2]
@@ -116,9 +155,119 @@ def crop_pcba_to_jpg(
     if quad is not None and passes_safeguards(quad, proc):
         quad = (np.asarray(quad, dtype=np.float32) / float(scale)).astype(np.float32)
         cropped = warp(orig, quad)
+        print(f"PCBA detected and perspective corrected")
     else:
         cropped = orig
+        print(f"No valid PCBA detected, using original image")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     cv2.imwrite(output_path, cropped, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
     return output_path
+
+def enhance_image(image_path: str, output_path: str) -> str:
+    """
+    Additional image enhancement for better component detection
+    
+    Args:
+        image_path: Input image path
+        output_path: Output enhanced image path
+    
+    Returns:
+        str: Path to enhanced image
+    """
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError(f"Could not load image: {image_path}")
+    
+    # Convert to LAB for better lighting control
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    
+    # Apply CLAHE to improve contrast
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l_enhanced = clahe.apply(l)
+    
+    # Merge back and convert to BGR
+    lab_enhanced = cv2.merge([l_enhanced, a, b])
+    enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+    
+    # Light denoising while preserving edges
+    enhanced = cv2.bilateralFilter(enhanced, 9, 75, 75)
+    
+    # Save enhanced image
+    cv2.imwrite(output_path, enhanced, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    
+    print(f"Image enhanced and saved to: {output_path}")
+    return output_path
+
+def main():
+    """Main preprocessing function with CLI support"""
+    parser = argparse.ArgumentParser(description="Preprocess PCBA images for component detection")
+    parser.add_argument("--input", required=True, help="Input image path")
+    parser.add_argument("--output", required=True, help="Output image path")
+    parser.add_argument("--method", choices=["auto", "color", "geometry"], default="auto",
+                       help="PCBA detection method")
+    parser.add_argument("--enhance", action="store_true", 
+                       help="Apply additional image enhancement")
+    parser.add_argument("--min-area", type=float, default=0.12,
+                       help="Minimum area fraction for valid PCBA detection")
+    parser.add_argument("--max-aspect", type=float, default=4.0,
+                       help="Maximum aspect ratio for valid PCBA")
+    
+    args = parser.parse_args()
+    
+    # Validate input
+    if not Path(args.input).exists():
+        print(f"Error: Input image not found: {args.input}")
+        return 1
+    
+    try:
+        print(f"Processing image: {args.input}")
+        print(f"Detection method: {args.method}")
+        
+        # Step 1: PCBA detection and perspective correction
+        if args.enhance:
+            # Use temporary file for intermediate processing
+            temp_path = str(Path(args.output).parent / f"temp_{Path(args.output).name}")
+            crop_pcba_to_jpg(
+                args.input, 
+                temp_path,
+                prefer=args.method,
+                min_area_frac=args.min_area,
+                max_aspect_ratio=args.max_aspect
+            )
+            
+            # Step 2: Additional enhancement
+            enhance_image(temp_path, args.output)
+            
+            # Clean up temp file
+            Path(temp_path).unlink(missing_ok=True)
+            
+        else:
+            # Just PCBA detection and cropping
+            crop_pcba_to_jpg(
+                args.input, 
+                args.output,
+                prefer=args.method,
+                min_area_frac=args.min_area,
+                max_aspect_ratio=args.max_aspect
+            )
+        
+        # Verify output
+        output_img = cv2.imread(args.output)
+        if output_img is None:
+            raise ValueError("Failed to create output image")
+        
+        height, width = output_img.shape[:2]
+        print(f"Preprocessing complete!")
+        print(f"Output: {args.output}")
+        print(f"Output size: {width}x{height} pixels")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"Preprocessing failed: {str(e)}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,17 @@
+# PCBA Defect Detection Pipeline Requirements
+
+# Core ML/AI libraries
+torch>=1.9.0                    # PyTorch for YOLO model
+torchvision>=0.10.0             # PyTorch vision utilities
+ultralytics>=8.0.0              # YOLOv8 implementation
+tensorflow>=2.10.0              # TensorFlow (includes TensorFlow Lite)
+
+# Image processing
+opencv-python>=4.5.0            # Computer vision and image processing
+Pillow>=8.3.0                   # Image loading and manipulation
+numpy>=1.21.0                   # Numerical operations
+
+# Camera interface (Raspberry Pi)
+# picamera2>=0.3.0              # Uncomment for Raspberry Pi
+
+# Note: json, pathlib, datetime, argparse are built-in Python modules
